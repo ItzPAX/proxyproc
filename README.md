@@ -17,7 +17,7 @@ int main()
 	int t = proxyproc::read_virtual_memory<int>(ADDRESS);
 	std::cout << std::dec << t << std::endl;
 
-    // call this before you exit the program to terminate the thread
+        // call this before you exit the program to terminate the thread
 	proxyproc::cleanup();
 
 	system("pause");
