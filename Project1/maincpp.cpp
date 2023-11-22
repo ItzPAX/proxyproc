@@ -9,6 +9,7 @@ int main()
 	float f = proxyproc::read_virtual_memory<float>(0x00007FF665AD5038);
 	std::cout << f << std::endl;
 	f += 10;
+
 	// write new value
 	proxyproc::write_virtual_memory<float>(0x00007FF665AD5038, &f);
 

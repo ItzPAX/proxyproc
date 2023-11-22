@@ -2,10 +2,13 @@
 #include <TlHelp32.h>
 #include <string>
 #include <iostream>
-#include <thread>
+#include <winternl.h>
 
 namespace proxyproc
 {
+#define SystemHandleInformation 16 
+#define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004)
+
 #define MAX_DATA_SIZE 0x1000
 
 #define STATUS_WAITING 0
@@ -19,9 +22,27 @@ namespace proxyproc
 	using f_WriteProcessMemory = BOOL(WINAPI*)(HANDLE, LPVOID, LPCVOID, SIZE_T, SIZE_T*);
 
 	using f_RtlAdjustPrivilege = NTSTATUS(NTAPI*)(ULONG, BOOLEAN, BOOLEAN, PBOOLEAN);
+	using f_NtQuerySystemInformation = NTSTATUS(NTAPI*)(ULONG, PVOID, ULONG, PULONG);
+
+	DWORD proxy_pid, target_pid;
+
+	typedef struct _SYSTEM_HANDLE {
+		ULONG ProcessId;
+		BYTE ObjectTypeNumber;
+		BYTE Flags;
+		USHORT Handle;
+		PVOID Object;
+		ACCESS_MASK GrantedAccess;
+	} SYSTEM_HANDLE;
+
+	typedef struct _SYSTEM_HANDLE_INFORMATION {
+		ULONG HandleCount;
+		SYSTEM_HANDLE Handles[1];
+	} SYSTEM_HANDLE_INFORMATION;
 
 	HANDLE proxy_handle;
 	HANDLE target_handle;
+	HMODULE ntdll;
 
 	struct CREATE_HANDLE_DATA
 	{
@@ -135,52 +156,102 @@ namespace proxyproc
 		}
 	}
 
+	bool find_existing_handle()
+	{
+		ULONG handle_info_size = 0x10000;
+		SYSTEM_HANDLE_INFORMATION* handle_info = (SYSTEM_HANDLE_INFORMATION*)malloc(handle_info_size);
+
+		f_NtQuerySystemInformation NtQuerySystemInformation = (f_NtQuerySystemInformation)GetProcAddress(ntdll, "NtQuerySystemInformation");
+
+		while (NtQuerySystemInformation(SystemHandleInformation, handle_info, handle_info_size, NULL) == STATUS_INFO_LENGTH_MISMATCH)
+		{
+			handle_info_size *= 2;
+			handle_info = (SYSTEM_HANDLE_INFORMATION*)realloc(handle_info, handle_info_size);
+		}
+
+		for (int i = 0; i < handle_info->HandleCount; i++)
+		{
+			SYSTEM_HANDLE handle = handle_info->Handles[i];
+			if (handle.ProcessId == proxy_pid)
+			{
+				if (handle.ObjectTypeNumber != 7)
+					continue;
+
+				HANDLE duplicated_handle = NULL;
+				DuplicateHandle(proxy_handle, (HANDLE)handle.Handle, GetCurrentProcess(), &duplicated_handle, 0, FALSE, DUPLICATE_SAME_ACCESS);
+
+				if (GetProcessId(duplicated_handle) != target_pid)
+					continue;
+
+				if (handle.GrantedAccess == PROCESS_ALL_ACCESS)
+				{
+					target_handle = (HANDLE)handle.Handle;
+					CloseHandle(duplicated_handle);
+
+					std::cout << "found existing handle: " << target_handle << std::endl;
+
+					break;
+				}
+
+				CloseHandle(duplicated_handle);
+			}
+		}
+
+		free(handle_info);
+		return target_handle != 0;
+	}
+
 	// creates a handle from "explorer.exe" can also be changed
 	void create_handle_in_proxy(const char* image_name)
 	{
-		HMODULE ntdll = GetModuleHandleA("ntdll");
+		ntdll = GetModuleHandleA("ntdll");
 		f_RtlAdjustPrivilege RtlAdjustPrivilege = (f_RtlAdjustPrivilege)GetProcAddress(ntdll, "RtlAdjustPrivilege");
-		boolean OldPriv;
-		RtlAdjustPrivilege(20, TRUE, FALSE, &OldPriv);
+		boolean old_priv;
+		RtlAdjustPrivilege(20, TRUE, FALSE, &old_priv);
 
-		DWORD proxy_pid = get_process_id(proxy_proc.c_str());
-		DWORD target_pid = get_process_id(image_name);
+		proxy_pid = get_process_id(proxy_proc.c_str());
+		target_pid = get_process_id(image_name);
 
 		std::cout << "proxy_pid: " << proxy_pid << " target_pid: " << target_pid << std::endl;
 
 		proxy_handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, proxy_pid);
 
-		CREATE_HANDLE_DATA data{ 0 };
-		data.pOpenProcess = OpenProcess;
-		data.pid = target_pid;
-		data.status = STATUS_WAITING;
-		data.out = 0;
-		
-		uintptr_t create_handle_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, sizeof(CREATE_HANDLE_DATA), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-		if (!create_handle_data_base)
-			exit(10);
-		WriteProcessMemory(proxy_handle, (LPVOID)create_handle_data_base, &data, sizeof(CREATE_HANDLE_DATA), NULL);
-
-		uintptr_t create_handle_shellcode_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-		if (!create_handle_shellcode_base)
-			exit(20);
-		WriteProcessMemory(proxy_handle, (LPVOID)create_handle_shellcode_base, shellcode_create_handle, 0x1000, NULL);
-
-		HANDLE h = CreateRemoteThread(proxy_handle, NULL, NULL, (LPTHREAD_START_ROUTINE)create_handle_shellcode_base, (LPVOID)create_handle_data_base, NULL, NULL);
-		if (h)
-			CloseHandle(h);
-
-		DWORD status = STATUS_WAITING;
-		while (status == STATUS_WAITING) 
+		if (!find_existing_handle())
 		{
-			CREATE_HANDLE_DATA data_checked{ 0 };
-			ReadProcessMemory(proxy_handle, (LPCVOID)create_handle_data_base, &data_checked, sizeof(CREATE_HANDLE_DATA), NULL);
-			status = data_checked.status;
-			target_handle = data_checked.out;
+			std::cout << "no existing handle found, creating new one...\n";
 
-			Sleep(30);
+			CREATE_HANDLE_DATA data{ 0 };
+			data.pOpenProcess = OpenProcess;
+			data.pid = target_pid;
+			data.status = STATUS_WAITING;
+			data.out = 0;
+
+			uintptr_t create_handle_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, sizeof(CREATE_HANDLE_DATA), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+			if (!create_handle_data_base)
+				exit(10);
+			WriteProcessMemory(proxy_handle, (LPVOID)create_handle_data_base, &data, sizeof(CREATE_HANDLE_DATA), NULL);
+
+			uintptr_t create_handle_shellcode_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+			if (!create_handle_shellcode_base)
+				exit(20);
+			WriteProcessMemory(proxy_handle, (LPVOID)create_handle_shellcode_base, shellcode_create_handle, 0x1000, NULL);
+
+			HANDLE h = CreateRemoteThread(proxy_handle, NULL, NULL, (LPTHREAD_START_ROUTINE)create_handle_shellcode_base, (LPVOID)create_handle_data_base, NULL, NULL);
+			if (h)
+				CloseHandle(h);
+
+			DWORD status = STATUS_WAITING;
+			while (status == STATUS_WAITING)
+			{
+				CREATE_HANDLE_DATA data_checked{ 0 };
+				ReadProcessMemory(proxy_handle, (LPCVOID)create_handle_data_base, &data_checked, sizeof(CREATE_HANDLE_DATA), NULL);
+				status = data_checked.status;
+				target_handle = data_checked.out;
+
+				Sleep(30);
+			}
 		}
-		
+
 		std::cout << std::hex << "proxy_handle: " << proxy_handle << " target_handle: " << target_handle << std::endl;
 
 		init_readwrite_shellcode();
