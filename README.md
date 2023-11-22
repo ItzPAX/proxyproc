@@ -7,17 +7,24 @@ This works by creating a handle from a "proxy" process that will do all the read
 
 You will still need to be able to open a handle to the game making this ineffective against KM ACs
 
-I have not implemented a method to write process memory however it should be trivial to implement if you look at the read_virtual_memory function
+Extremely inefficient, I haven't yet figured out how to properly tell the thread to "idle" when there is no update
 ## Usage
 
 ```cpp
+#include "proxyproc.h"
+
 int main()
 {
-	proxyproc::create_handle_in_proxy("YOURPROCESS.exe");
-	int t = proxyproc::read_virtual_memory<int>(ADDRESS);
-	std::cout << std::dec << t << std::endl;
+	// setup our proxy process and open a handle to our target from it
+	proxyproc::create_handle_in_proxy("Victim.exe");
 
-        // call this before you exit the program to terminate the thread
+	// read memory from this address
+	float f = proxyproc::read_virtual_memory<float>(0x00007FF654005038);
+	f += 10;
+	// write new value
+	proxyproc::write_virtual_memory<float>(0x00007FF654005038, &f);
+
+	// terminate both threads
 	proxyproc::cleanup();
 
 	system("pause");
