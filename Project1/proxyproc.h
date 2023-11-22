@@ -85,7 +85,7 @@ namespace proxyproc
 
 	void __stdcall shellcode_create_handle(CREATE_HANDLE_DATA* data)
 	{
-		data->out = data->pOpenProcess(PROCESS_ALL_ACCESS, FALSE, data->pid);
+		data->out = data->pOpenProcess((PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_DUP_HANDLE), FALSE, data->pid);
 		data->status = STATUS_FINISHED;
 	}
 
