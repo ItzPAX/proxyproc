@@ -94,11 +94,6 @@ namespace proxyproc
 		// no bueno for the cpu :sadbob:
 		while (true)
 		{
-			if (!data->updated)
-			{
-				continue;
-			}
-
 			if (data->write)
 			{
 				data->status = STATUS_WAITING;
@@ -111,8 +106,6 @@ namespace proxyproc
 				data->pReadProcessMemory(data->handle, (LPCVOID)data->address, (LPVOID)data->proxy_data_base, data->size, NULL);
 				data->status = STATUS_FINISHED;
 			}
-
-			data->updated = false;
 		}
 	}
 
