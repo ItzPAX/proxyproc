@@ -12,11 +12,13 @@ namespace proxyproc
 #define STATUS_FINISHED 1
 #define STATUS_ERROR 2
 
-	std::string proxy_proc = "explorer.exe";
+	std::string proxy_proc = "lsass.exe";
 
 	using f_OpenProcess = HANDLE(WINAPI*)(DWORD, BOOL, DWORD);
 	using f_ReadProcessMemory = BOOL(WINAPI*)(HANDLE, LPCVOID, LPVOID, SIZE_T, SIZE_T*);
 	using f_WriteProcessMemory = BOOL(WINAPI*)(HANDLE, LPVOID, LPCVOID, SIZE_T, SIZE_T*);
+
+	using f_RtlAdjustPrivilege = NTSTATUS(NTAPI*)(ULONG, BOOLEAN, BOOLEAN, PBOOLEAN);
 
 	HANDLE proxy_handle;
 	HANDLE target_handle;
@@ -129,6 +131,11 @@ namespace proxyproc
 	// creates a handle from "explorer.exe" can also be changed
 	void create_handle_in_proxy(const char* image_name)
 	{
+		HMODULE ntdll = GetModuleHandleA("ntdll");
+		f_RtlAdjustPrivilege RtlAdjustPrivilege = (f_RtlAdjustPrivilege)GetProcAddress(ntdll, "RtlAdjustPrivilege");
+		boolean OldPriv;
+		RtlAdjustPrivilege(20, TRUE, FALSE, &OldPriv);
+
 		DWORD proxy_pid = get_process_id(proxy_proc.c_str());
 		DWORD target_pid = get_process_id(image_name);
 

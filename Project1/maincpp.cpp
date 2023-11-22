@@ -2,15 +2,16 @@
 
 int main()
 {
+	// setup our proxy process and open a handle to our target from it
 	proxyproc::create_handle_in_proxy("Victim.exe");
 
-	for (int i = 0; i < 10000; i++)
-	{
-		float f = proxyproc::read_virtual_memory<float>(0x00007FF654005038);
-		f += 10;
-		proxyproc::write_virtual_memory<float>(0x00007FF654005038, &f);
-	}
+	// read memory from this address
+	float f = proxyproc::read_virtual_memory<float>(0x00007FF654005038);
+	f += 10;
+	// write new value
+	proxyproc::write_virtual_memory<float>(0x00007FF654005038, &f);
 
+	// terminate both threads
 	proxyproc::cleanup();
 
 	system("pause");
