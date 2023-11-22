@@ -7,7 +7,7 @@ This works by creating a handle from a "proxy" process that will do all the read
 
 You will still need to be able to open a handle to the game making this ineffective against KM ACs
 
-I have not implemented a method to write process memory however it should be trivial to implement if you look at the read_virtual_memory function
+Extremely inefficient, I haven't yet figured out how to properly tell the thread to "idle" when there is no update
 ## Usage
 
 ```cpp
