@@ -8,6 +8,11 @@ This works by creating a handle from a "proxy" process that will do all the read
 You will still need to be able to open a handle to the game making this ineffective against KM ACs
 
 Extremely inefficient, I haven't yet figured out how to properly tell the thread to "idle" when there is no update
+
+## Improvement ideas
+
+One could also look for an open handle from the proxy process instead of creating a new one. For example lsass always has a PROCESS_ALL_ACCESS handle, you could also use that handle.
+
 ## Usage
 
 ```cpp
