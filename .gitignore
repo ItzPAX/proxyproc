@@ -37,3 +37,8 @@
 *.pdb
 *.iobj
 *.ipdb
+*.db-wal
+*.db-shm
+*.db
+*.ipch
+*.opendb
