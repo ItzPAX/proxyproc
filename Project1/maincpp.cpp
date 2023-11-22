@@ -6,10 +6,11 @@ int main()
 	proxyproc::create_handle_in_proxy("Victim.exe");
 
 	// read memory from this address
-	float f = proxyproc::read_virtual_memory<float>(0x00007FF654005038);
+	float f = proxyproc::read_virtual_memory<float>(0x00007FF665AD5038);
+	std::cout << f << std::endl;
 	f += 10;
 	// write new value
-	proxyproc::write_virtual_memory<float>(0x00007FF654005038, &f);
+	proxyproc::write_virtual_memory<float>(0x00007FF665AD5038, &f);
 
 	// terminate both threads
 	proxyproc::cleanup();
