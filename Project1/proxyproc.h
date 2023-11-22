@@ -23,23 +23,6 @@ namespace proxyproc
 	HANDLE proxy_handle;
 	HANDLE target_handle;
 
-	HANDLE read_thread;
-	HANDLE write_thread;
-
-	// base for the shellcode that will read data from proxy process
-	uintptr_t read_read_shellcode_base;
-	// base for the READ_DATA struct in proxy process
-	uintptr_t read_read_data_base;
-	// base for the data that is read from proxy process
-	uintptr_t read_data_base;
-
-	// base for the shellcode that will write data from proxy process
-	uintptr_t write_write_shellcode_base;
-	// base for the WRITE_DATA struct in proxy process
-	uintptr_t write_write_data_base;
-	// base for the data that is written from proxy process
-	uintptr_t write_data_base;
-
 	struct CREATE_HANDLE_DATA
 	{
 		DWORD pid;
@@ -48,27 +31,51 @@ namespace proxyproc
 		f_OpenProcess pOpenProcess;
 	};
 
-	struct READ_DATA
+	namespace read
 	{
-		bool updated;
-		HANDLE handle;
-		DWORD status;
-		size_t size;
-		uintptr_t address;
-		uintptr_t proxy_data_base;
-		f_ReadProcessMemory pReadProcessMemory;
-	};
+		struct READ_DATA
+		{
+			bool updated;
+			HANDLE handle;
+			DWORD status;
+			size_t size;
+			uintptr_t address;
+			uintptr_t proxy_data_base;
+			f_ReadProcessMemory pReadProcessMemory;
+		};
 
-	struct WRITE_DATA
+		// base for the shellcode that will read data from proxy process
+		uintptr_t shellcode_base;
+		// base for the READ_DATA struct in proxy process
+		uintptr_t read_data_base;
+		// base for the data that is read from proxy process
+		uintptr_t data_base;
+
+		HANDLE thread;
+	}
+	namespace write
 	{
-		bool updated;
-		HANDLE handle;
-		DWORD status;
-		size_t size;
-		uintptr_t address;
-		uintptr_t proxy_data_base;
-		f_WriteProcessMemory pWriteProcessMemory;
-	};
+		struct WRITE_DATA
+		{
+			bool updated;
+			HANDLE handle;
+			DWORD status;
+			size_t size;
+			uintptr_t address;
+			uintptr_t proxy_data_base;
+			f_WriteProcessMemory pWriteProcessMemory;
+		};
+
+		// base for the shellcode that will write data from proxy process
+		uintptr_t shellcode_base;
+		// base for the WRITE_DATA struct in proxy process
+		uintptr_t write_data_base;
+		// base for the data that is written from proxy process
+		uintptr_t data_base;
+
+		HANDLE thread;
+
+	}
 
 	void __stdcall shellcode_create_handle(CREATE_HANDLE_DATA* data)
 	{
@@ -76,7 +83,7 @@ namespace proxyproc
 		data->status = STATUS_FINISHED;
 	}
 
-	void __stdcall shellcode_read_data(READ_DATA* data)
+	void __stdcall shellcode_read_data(read::READ_DATA* data)
 	{
 		// no bueno for the cpu :sadbob:
 		while (true)
@@ -94,7 +101,7 @@ namespace proxyproc
 		}
 	}
 
-	void __stdcall shellcode_write_data(WRITE_DATA* data)
+	void __stdcall shellcode_write_data(write::WRITE_DATA* data)
 	{
 		while (true)
 		{
@@ -179,64 +186,64 @@ namespace proxyproc
 
 	void cleanup()
 	{
-		TerminateThread(write_thread, 0);
-		TerminateThread(read_thread, 0);
+		TerminateThread(write::thread, 0);
+		TerminateThread(read::thread, 0);
 	}
 
 	void read_virtual_memory(uintptr_t address, void* buf, size_t size)
 	{
-		if (!read_data_base)
+		if (!read::data_base)
 		{
-			read_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, MAX_DATA_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-			if (!read_data_base)
+			read::data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, MAX_DATA_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+			if (!read::data_base)
 				exit(40);
 
-			std::cout << "proxy data base at 0x" << read_data_base << std::endl;
+			std::cout << "proxy data base at 0x" << read::data_base << std::endl;
 		}
 
-		READ_DATA data{ 0 };
+		read::READ_DATA data{ 0 };
 		data.address = address;
 		data.handle = target_handle;
 		data.size = size;
 		data.status = STATUS_WAITING;
-		data.proxy_data_base = read_data_base;
+		data.proxy_data_base = read::data_base;
 		data.updated = true;
 		data.pReadProcessMemory = ReadProcessMemory;
 
-		if (!read_read_data_base)
+		if (!read::read_data_base)
 		{
-			read_read_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, sizeof(READ_DATA), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-			if (!read_read_data_base)
+			read::read_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, sizeof(read::READ_DATA), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+			if (!read::read_data_base)
 				exit(50);
 
-			std::cout << "read data base at 0x" << read_read_data_base << std::endl;
+			std::cout << "read data base at 0x" << read::read_data_base << std::endl;
 		}
 
-		WriteProcessMemory(proxy_handle, (LPVOID)read_read_data_base, &data, sizeof(READ_DATA), NULL);
+		WriteProcessMemory(proxy_handle, (LPVOID)read::read_data_base, &data, sizeof(read::READ_DATA), NULL);
 
-		if (!read_read_shellcode_base)
+		if (!read::shellcode_base)
 		{
-			read_read_shellcode_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-			if (!read_read_shellcode_base)
+			read::shellcode_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+			if (!read::shellcode_base)
 				exit(60);
 
-			std::cout << "shellcode data base at 0x" << read_read_shellcode_base << std::endl;
+			std::cout << "shellcode data base at 0x" << read::shellcode_base << std::endl;
 
-			WriteProcessMemory(proxy_handle, (LPVOID)read_read_shellcode_base, shellcode_read_data, 0x1000, NULL);
+			WriteProcessMemory(proxy_handle, (LPVOID)read::shellcode_base, shellcode_read_data, 0x1000, NULL);
 		}
 
-		if (!read_thread)
+		if (!read::thread)
 		{
-			read_thread = CreateRemoteThread(proxy_handle, NULL, NULL, (LPTHREAD_START_ROUTINE)read_read_shellcode_base, (LPVOID)read_read_data_base, NULL, NULL);
-			if (!read_thread)
+			read::thread = CreateRemoteThread(proxy_handle, NULL, NULL, (LPTHREAD_START_ROUTINE)read::shellcode_base, (LPVOID)read::read_data_base, NULL, NULL);
+			if (!read::thread)
 				exit(70);
 		}
 
 		DWORD status = STATUS_WAITING;
 		while (status != STATUS_FINISHED)
 		{
-			READ_DATA data_checked{ 0 };
-			ReadProcessMemory(proxy_handle, (LPCVOID)read_read_data_base, &data_checked, sizeof(READ_DATA), NULL);
+			read::READ_DATA data_checked{ 0 };
+			ReadProcessMemory(proxy_handle, (LPCVOID)read::read_data_base, &data_checked, sizeof(read::READ_DATA), NULL);
 			status = data_checked.status;
 			if (status == STATUS_ERROR)
 			{
@@ -245,7 +252,7 @@ namespace proxyproc
 			}
 		}
 
-		ReadProcessMemory(proxy_handle, (LPCVOID)read_data_base, buf, size, NULL);
+		ReadProcessMemory(proxy_handle, (LPCVOID)read::data_base, buf, size, NULL);
 	}
 
 	template<typename T>
@@ -263,60 +270,60 @@ namespace proxyproc
 
 	void write_virtual_memory(uintptr_t address, void* buf, size_t size)
 	{
-		if (!write_data_base)
+		if (!write::data_base)
 		{
-			write_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, MAX_DATA_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-			if (!write_data_base)
+			write::data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, MAX_DATA_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+			if (!write::data_base)
 				exit(40);
 
-			std::cout << "proxy data base at 0x" << std::hex << write_data_base << std::endl;
+			std::cout << "proxy data base at 0x" << std::hex << write::data_base << std::endl;
 		}
 
-		WriteProcessMemory(proxy_handle, (LPVOID)write_data_base, buf, size, NULL);
+		WriteProcessMemory(proxy_handle, (LPVOID)write::data_base, buf, size, NULL);
 
-		WRITE_DATA data{ 0 };
+		write::WRITE_DATA data{ 0 };
 		data.address = address;
 		data.handle = target_handle;
 		data.size = size;
 		data.status = STATUS_WAITING;
-		data.proxy_data_base = write_data_base;
+		data.proxy_data_base = write::data_base;
 		data.updated = true;
 		data.pWriteProcessMemory = WriteProcessMemory;
 
-		if (!write_write_data_base)
+		if (!write::write_data_base)
 		{
-			write_write_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, sizeof(WRITE_DATA), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-			if (!write_write_data_base)
+			write::write_data_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, sizeof(write::WRITE_DATA), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+			if (!write::write_data_base)
 				exit(50);
 
-			std::cout << "write data base at 0x" << write_write_data_base << std::endl;
+			std::cout << "write data base at 0x" << write::write_data_base << std::endl;
 		}
 
-		WriteProcessMemory(proxy_handle, (LPVOID)write_write_data_base, &data, sizeof(WRITE_DATA), NULL);
+		WriteProcessMemory(proxy_handle, (LPVOID)write::write_data_base, &data, sizeof(write::WRITE_DATA), NULL);
 
-		if (!write_write_shellcode_base)
+		if (!write::shellcode_base)
 		{
-			write_write_shellcode_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-			if (!write_write_shellcode_base)
+			write::shellcode_base = reinterpret_cast<uintptr_t>(VirtualAllocEx(proxy_handle, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+			if (!write::shellcode_base)
 				exit(60);
 
-			std::cout << "shellcode data base at 0x" << write_write_shellcode_base << std::endl;
+			std::cout << "shellcode data base at 0x" << write::shellcode_base << std::endl;
 
-			WriteProcessMemory(proxy_handle, (LPVOID)write_write_shellcode_base, shellcode_write_data, 0x1000, NULL);
+			WriteProcessMemory(proxy_handle, (LPVOID)write::shellcode_base, shellcode_write_data, 0x1000, NULL);
 		}
 
-		if (!write_thread)
+		if (!write::thread)
 		{
-			write_thread = CreateRemoteThread(proxy_handle, NULL, NULL, (LPTHREAD_START_ROUTINE)write_write_shellcode_base, (LPVOID)write_write_data_base, NULL, NULL);
-			if (!write_thread)
+			write::thread = CreateRemoteThread(proxy_handle, NULL, NULL, (LPTHREAD_START_ROUTINE)write::shellcode_base, (LPVOID)write::write_data_base, NULL, NULL);
+			if (!write::thread)
 				exit(70);
 		}
 
 		DWORD status = STATUS_WAITING;
 		while (status != STATUS_FINISHED)
 		{
-			WRITE_DATA data_checked{ 0 };
-			ReadProcessMemory(proxy_handle, (LPCVOID)write_write_data_base, &data_checked, sizeof(WRITE_DATA), NULL);
+			write::WRITE_DATA data_checked{ 0 };
+			ReadProcessMemory(proxy_handle, (LPCVOID)write::write_data_base, &data_checked, sizeof(write::WRITE_DATA), NULL);
 			status = data_checked.status;
 			if (status == STATUS_ERROR)
 			{
