@@ -183,7 +183,7 @@ namespace proxyproc
 				if (GetProcessId(duplicated_handle) != target_pid)
 					continue;
 
-				if (handle.GrantedAccess == PROCESS_ALL_ACCESS)
+				if (handle.GrantedAccess == (PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_DUP_HANDLE))
 				{
 					target_handle = (HANDLE)handle.Handle;
 					CloseHandle(duplicated_handle);
