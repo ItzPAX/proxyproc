@@ -15,6 +15,8 @@ One could also look for an open handle from the proxy process instead of creatin
 
 ## Usage
 
+Check out [cs2-triggerbot](https://github.com/ItzPAX/cs2-triggerbot) which uses this header to create a simple triggerbot.
+
 ```cpp
 #include "proxyproc.h"
 
