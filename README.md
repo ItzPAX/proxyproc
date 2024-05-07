@@ -11,7 +11,7 @@ Extremely inefficient, I haven't yet figured out how to properly tell the thread
 
 ## Improvement ideas
 
-One could also look for an open handle from the proxy process instead of creating a new one. For example lsass always has a PROCESS_ALL_ACCESS handle, you could also use that handle.
+~~One could also look for an open handle from the proxy process instead of creating a new one. For example lsass always has a PROCESS_ALL_ACCESS handle, you could also use that handle.~~
 
 ## Usage
 
