@@ -13,6 +13,8 @@ Extremely inefficient, I haven't yet figured out how to properly tell the thread
 
 ~~One could also look for an open handle from the proxy process instead of creating a new one. For example lsass always has a PROCESS_ALL_ACCESS handle, you could also use that handle.~~
 
+**Implemented using lsass.exe**
+
 ## Usage
 
 Check out [cs2-triggerbot](https://github.com/ItzPAX/cs2-triggerbot) which uses this header to create a simple triggerbot.
