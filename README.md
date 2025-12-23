@@ -17,8 +17,6 @@ Extremely inefficient, I haven't yet figured out how to properly tell the thread
 
 ## Usage
 
-Check out [cs2-triggerbot](https://github.com/ItzPAX/cs2-triggerbot) which uses this header to create a simple triggerbot.
-
 ```cpp
 #include "proxyproc.h"
 
